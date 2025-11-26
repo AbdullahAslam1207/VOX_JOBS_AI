@@ -4,3 +4,5 @@ __pycache__/
 .env
 .venv/
 Scraped_Data/
+Rozee-Scraper-js/node_modules/
+vector_store/

@@ -103,7 +103,7 @@ def fetch_jobz_jobs():
         print(f"Finished {city}: {len(city_jobs)} jobs")
 
     # Save results
-    with open("Scraped_Data/jobs_all_cities.json", "w", encoding="utf-8") as f:
+    with open("Scraped_Data/jobs_jobz.json", "w", encoding="utf-8") as f:
         json.dump(all_jobs, f, ensure_ascii=False, indent=2)
 
     print("Scraping complete.")
