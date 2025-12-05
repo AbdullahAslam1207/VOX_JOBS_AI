@@ -1,10 +1,10 @@
-from groq import Groq
+import requests
 from utils.jobs_prompts import digital_assistant_jobs_prompt
 from utils.normalize_history import build_chat_prompt
 import os
 
-# Initialize Groq client
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Modal API endpoint
+MODAL_API_URL = "https://am0055461--vox-jobs-llm-chat-completions.modal.run"
 
 def chat_jobs(chat_history, retriever, query):
     """
@@ -41,18 +41,31 @@ def chat_jobs(chat_history, retriever, query):
         .replace("{question}", query)
     )
     
-    # Get complete response using Groq (no streaming)
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
+    # Get complete response using Modal-hosted LLM
+    payload = {
+        "model": "llama",
+        "messages": [
             {"role": "system", "content": conv_prompt},
             {"role": "user", "content": query}
         ],
-        stream=False,
-    )
+        "temperature": 0.7,
+        "max_tokens": 1024
+    }
     
-    complete_response = response.choices[0].message.content
-    print('Jobs response completed')
+    print("Sending request to Modal LLM...")
+    
+    try:
+        response = requests.post(MODAL_API_URL, json=payload, timeout=120)
+        response.raise_for_status()
+        
+        response_data = response.json()
+        complete_response = response_data['choices'][0]['message']['content']
+        print('Jobs response completed')
+        
+    except requests.exceptions.Timeout:
+        raise Exception("Modal API request timed out after 120 seconds")
+    except Exception as e:
+        raise Exception(f"Modal API error: {str(e)}")
     
     # Return the complete response
     return {"response": complete_response, "status": 200}
