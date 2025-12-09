@@ -94,7 +94,7 @@ async def chat_response_jobs(request: Request):
     
     if previous_bot_message:
         previous_bot_message = clean_and_parse(previous_bot_message)
-        print(f"clean bot message: {previous_bot_message}")
+        # print(f"clean bot message: {previous_bot_message}")
         
         # Create rephrase prompt for jobs using job-specific prompt
         updated_rephrase_query_prompt_jobs = rephrase_query_prompt_jobs.replace("{previous_query}", previous_user_message)

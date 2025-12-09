@@ -5,7 +5,7 @@ import json
 
 def build_chat_prompt(data):
     try:
-        print(data)
+        # print(data)
         result = "[\n"
         for i, item in enumerate(data, start=1):
             # Escape single { and } by doubling them

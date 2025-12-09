@@ -1,11 +1,12 @@
-from groq import Groq
+import requests
 from utils.jobs_prompts import digital_assistant_jobs_prompt
 from utils.normalize_history import build_chat_prompt
 import os
 import json
 
-# Initialize Groq client
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Modal API endpoint
+MODAL_API_URL = "https://am0055461--vox-jobs-llm-chat-completions.modal.run"
+
 
 def parse_response_with_cards(complete_response):
     """
@@ -80,18 +81,10 @@ def chat_jobs(chat_history, retriever, query):
     # Retrieve relevant documents from the vector store
     docs = retriever.invoke(query)
     
-    print(f"retrieved docs for Jobs: {docs}")
+    print(f"Total retrieved docs for Jobs: {len(docs)}")
     
-    # Build context from retrieved documents including job_link from metadata
-    context_parts = []
-    for doc in docs:
-        content = doc.page_content
-        # Add job_link from metadata if available
-        if hasattr(doc, 'metadata') and 'job_link' in doc.metadata:
-            content += f"\njob_link: {doc.metadata['job_link']}"
-        context_parts.append(content)
-    
-    context = "\n\n".join(context_parts)
+    # Build context from retrieved documents
+    context = "\n\n".join([doc.page_content for doc in docs])
     
     # Build chat history prompt
     chat_history_text = build_chat_prompt(chat_history)
@@ -104,22 +97,32 @@ def chat_jobs(chat_history, retriever, query):
         .replace("{question}", query)
     )
     
-    # Get complete response using Groq (no streaming)
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
+    # Get complete response using Modal-hosted LLM
+    payload = {
+        "model": "llama",
+        "messages": [
             {"role": "system", "content": conv_prompt},
             {"role": "user", "content": query}
         ],
-        stream=False,
-    )
+        "temperature": 0.7,
+        "max_tokens": 1024
+    }
     
-    complete_response = response.choices[0].message.content
+    print("Sending request to Modal LLM...")
     
-    # Parse response to separate message and job cards
-    complete_response = parse_response_with_cards(complete_response)
+    try:
+        response = requests.post(MODAL_API_URL, json=payload, timeout=120)
+        response.raise_for_status()
+        
+        response_data = response.json()
+        complete_response = response_data['choices'][0]['message']['content']
+        complete_response = parse_response_with_cards(complete_response)
+        print('Jobs response completed')
+        
+    except requests.exceptions.Timeout:
+        raise Exception("Modal API request timed out after 120 seconds")
+    except Exception as e:
+        raise Exception(f"Modal API error: {str(e)}")
     
-    print('Jobs response completed')
-    
-    # Return the complete response with parsed message and jobs
+    # Return the complete response
     return {"response": complete_response, "status": 200}
