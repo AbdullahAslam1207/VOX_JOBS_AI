@@ -2,6 +2,7 @@ import requests
 from utils.jobs_prompts import digital_assistant_jobs_prompt
 from utils.normalize_history import build_chat_prompt
 import os
+import re
 import json
 
 # Modal API endpoint
@@ -117,6 +118,7 @@ def chat_jobs(chat_history, retriever, query):
         response_data = response.json()
         complete_response = response_data['choices'][0]['message']['content']
         complete_response = parse_response_with_cards(complete_response)
+        complete_response["message"] = re.sub(r'TEXT_MESSAGE', '', complete_response["message"], flags=re.IGNORECASE).strip()
         print('Jobs response completed')
         
     except requests.exceptions.Timeout:

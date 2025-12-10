@@ -3,6 +3,7 @@ from utils.jobs_prompts import digital_assistant_jobs_prompt
 from utils.normalize_history import build_chat_prompt
 import os
 import json
+import re
 
 # Initialize Groq client
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -119,7 +120,11 @@ def chat_jobs(chat_history, retriever, query):
     # Parse response to separate message and job cards
     complete_response = parse_response_with_cards(complete_response)
     
-    print('Jobs response completed')
+    # Remove TEXT_MESSAGE if present
+    complete_response["message"] = re.sub(r'TEXT_MESSAGE', '', complete_response["message"], flags=re.IGNORECASE).strip()
     
+    print('Jobs response completed')
+    print("The len of jobs found is", len(complete_response["jobs"]))
+    print("The message of the job is",complete_response["message"])
     # Return the complete response with parsed message and jobs
     return {"response": complete_response, "status": 200}
