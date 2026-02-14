@@ -18,6 +18,7 @@ from utils.rephrase_query import rephrase_question_jobs
 from utils.jobs_prompts import rephrase_query_prompt_jobs
 from utils.normalize_history import clean_and_parse
 from utils.voice_stt import get_stt_instance
+from utils.voice_tts import get_tts_instance
 from utils.session_manager import session_manager
 import subprocess
 import os
@@ -268,18 +269,58 @@ async def voice_chat_websocket(websocket: WebSocket):
                             bot_message = response_data.get("message", "")
                             jobs = response_data.get("jobs", [])
                             
+                            # Display jobs JSON on terminal
+                            if jobs:
+                                logger.info("=" * 50)
+                                logger.info("📋 JOBS CARDS DATA:")
+                                logger.info(json.dumps(jobs, indent=2))
+                                logger.info("=" * 50)
+                            
                             # Add to session history
                             session_manager.add_message(session_id, transcription, bot_message)
                             
-                            # Send response to client
-                            await websocket.send_json({
-                                "type": "response",
-                                "transcription": transcription,
-                                "message": bot_message,
-                                "jobs": jobs
-                            })
-                            
-                            logger.info("Response sent successfully")
+                            # Step 6: Generate TTS audio for bot_message (text before __CARDS__)
+                            try:
+                                await websocket.send_json({"type": "status", "message": "Generating speech..."})
+                                
+                                tts = get_tts_instance()
+                                audio_bytes = tts.text_to_speech_stream(bot_message)
+                                
+                                if audio_bytes:
+                                    logger.info(f"TTS audio generated: {len(audio_bytes)} bytes")
+                                    
+                                    # Send text response first
+                                    await websocket.send_json({
+                                        "type": "response",
+                                        "transcription": transcription,
+                                        "message": bot_message,
+                                        "jobs": jobs
+                                    })
+                                    
+                                    # Then send audio
+                                    await websocket.send_bytes(audio_bytes)
+                                    
+                                    logger.info("Response and audio sent successfully")
+                                else:
+                                    # Send without audio if TTS failed
+                                    await websocket.send_json({
+                                        "type": "response",
+                                        "transcription": transcription,
+                                        "message": bot_message,
+                                        "jobs": jobs
+                                    })
+                                    logger.warning("TTS generated no audio, sent text only")
+                                    
+                            except Exception as tts_error:
+                                logger.error(f"TTS error: {str(tts_error)}")
+                                # Send text response even if TTS fails
+                                await websocket.send_json({
+                                    "type": "response",
+                                    "transcription": transcription,
+                                    "message": bot_message,
+                                    "jobs": jobs
+                                })
+                                logger.info("Response sent without audio due to TTS error")
                         else:
                             await websocket.send_json({
                                 "type": "error",
@@ -493,6 +534,14 @@ function connectWebSocket() {
     };
 
     ws.onmessage = (event) => {
+        // Handle binary audio data
+        if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+            console.log("🔊 Received audio data");
+            playAudio(event.data);
+            return;
+        }
+        
+        // Handle JSON messages
         const data = JSON.parse(event.data);
         console.log("⬇️", data);
 
@@ -502,11 +551,22 @@ function connectWebSocket() {
 
         if (data.type === "response") {
             addMessage(data.message, "bot");
+            
+            // Display jobs if available
+            if (data.jobs && data.jobs.length > 0) {
+                console.log("📋 Jobs:", data.jobs);
+                // Optionally display job cards in UI
+            }
+            
             updateStatus("Ready.");
         }
 
         if (data.type === "error") {
             updateStatus("Error: " + data.message);
+        }
+        
+        if (data.type === "status") {
+            updateStatus(data.message);
         }
     };
 
@@ -581,6 +641,34 @@ function addMessage(text, sender) {
     div.innerHTML = `<div class="message-bubble">${text}</div>`;
     chatArea.appendChild(div);
     chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+// Play audio received from server
+function playAudio(audioData) {
+    try {
+        // Convert to Blob if it's ArrayBuffer
+        const blob = audioData instanceof Blob ? audioData : new Blob([audioData], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(blob);
+        
+        const audio = new Audio(audioUrl);
+        audio.play().then(() => {
+            console.log("🔊 Playing audio");
+            updateStatus("🔊 Playing response...");
+        }).catch(err => {
+            console.error("Audio play error:", err);
+            updateStatus("Audio play failed: " + err.message);
+        });
+        
+        // Clean up URL after playing
+        audio.onended = () => {
+            URL.revokeObjectURL(audioUrl);
+            updateStatus("Ready.");
+        };
+        
+    } catch (err) {
+        console.error("Error playing audio:", err);
+        updateStatus("Audio error: " + err.message);
+    }
 }
 
 // Float32 to PCM16 converter
