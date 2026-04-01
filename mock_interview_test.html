@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>Mock Interview Voice Test</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Segoe UI, sans-serif;
+            background: #f0f2f5;
+            color: #1f2937;
+        }
+        .container {
+            width: 900px;
+            margin: 24px auto;
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .header {
+            padding: 16px 20px;
+            background: #111827;
+            color: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .connection-status {
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+        }
+        .connected { background: #dcfce7; color: #166534; }
+        .disconnected { background: #fee2e2; color: #991b1b; }
+        .setup {
+            display: grid;
+            grid-template-columns: 1fr 120px 140px;
+            gap: 10px;
+            padding: 14px 20px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .setup input, .setup select, .setup button {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            font-size: 14px;
+        }
+        .setup button {
+            background: #111827;
+            color: #fff;
+            cursor: pointer;
+            border: none;
+        }
+        .chat-area {
+            height: 460px;
+            overflow-y: auto;
+            padding: 16px 20px;
+            background: #f9fafb;
+        }
+        .message { margin-bottom: 12px; display: flex; }
+        .message.user { justify-content: flex-end; }
+        .bubble {
+            max-width: 76%;
+            padding: 10px 12px;
+            border-radius: 12px;
+            line-height: 1.45;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+        .message.user .bubble { background: #dbeafe; }
+        .message.bot .bubble { background: #fff; border: 1px solid #e5e7eb; }
+        .status {
+            background: #ecfeff;
+            border-top: 1px solid #cffafe;
+            color: #0f766e;
+            padding: 10px 20px;
+            font-size: 13px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            padding: 14px 20px 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+        .controls button {
+            padding: 10px 14px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            color: #fff;
+        }
+        #recordBtn { background: #16a34a; }
+        #recordBtn.recording { background: #dc2626; }
+        #finishBtn { background: #4f46e5; }
+        #clearBtn { background: #6b7280; }
+        .score-card {
+            margin-top: 8px;
+            background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            padding: 10px 12px;
+        }
+        .score-card h4 { margin: 0 0 8px; }
+        .score-card ul { margin: 6px 0 0 18px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h2>🎤 Mock Interview Voice Test</h2>
+        <span id="connectionStatus" class="connection-status disconnected">Disconnected</span>
+    </div>
+
+    <div class="setup">
+        <input id="targetField" placeholder="Target field (e.g. Data Scientist, Backend Engineer)" />
+        <select id="maxRounds">
+            <option value="3">3 rounds</option>
+            <option value="5" selected>5 rounds</option>
+            <option value="7">7 rounds</option>
+        </select>
+        <button id="startBtn">Start Interview</button>
+    </div>
+
+    <div class="chat-area" id="chatArea"></div>
+    <div class="status" id="statusArea">Ready. Start an interview first.</div>
+
+    <div class="controls">
+        <button id="recordBtn">🎤 Start Speaking</button>
+        <button id="finishBtn">🏁 Finish Interview</button>
+        <button id="clearBtn">🗑 Clear Session</button>
+    </div>
+</div>
+
+<script>
+let ws;
+let audioContext;
+let processor;
+let input;
+let stream;
+let isRecording = false;
+let silenceTimeout = null;
+let lastSoundTime = Date.now();
+let hasSpoken = false;
+const SILENCE_DURATION = 1800;
+const AUDIO_THRESHOLD = 0.01;
+
+const targetFieldInput = document.getElementById("targetField");
+const maxRoundsSelect = document.getElementById("maxRounds");
+const startBtn = document.getElementById("startBtn");
+const recordBtn = document.getElementById("recordBtn");
+const finishBtn = document.getElementById("finishBtn");
+const clearBtn = document.getElementById("clearBtn");
+const chatArea = document.getElementById("chatArea");
+const statusArea = document.getElementById("statusArea");
+const connectionStatus = document.getElementById("connectionStatus");
+
+function updateStatus(msg) {
+    statusArea.textContent = msg;
+}
+
+function addMessage(text, sender) {
+    const row = document.createElement("div");
+    row.className = `message ${sender}`;
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
+    row.appendChild(bubble);
+    chatArea.appendChild(row);
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function addScoreCard(data) {
+    const row = document.createElement("div");
+    row.className = "message bot";
+
+    const card = document.createElement("div");
+    card.className = "bubble score-card";
+    card.innerHTML = `
+        <h4>Final Score: ${data.score}/100</h4>
+        <div><strong>Summary:</strong> ${data.summary || ""}</div>
+        <div style="margin-top:8px;"><strong>Strengths</strong></div>
+        <ul>${(data.strengths || []).map(s => `<li>${s}</li>`).join("")}</ul>
+        <div style="margin-top:8px;"><strong>Improvements</strong></div>
+        <ul>${(data.improvements || []).map(s => `<li>${s}</li>`).join("")}</ul>
+    `;
+
+    row.appendChild(card);
+    chatArea.appendChild(row);
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function playAudio(audioData) {
+    try {
+        const blob = audioData instanceof Blob ? audioData : new Blob([audioData], { type: "audio/wav" });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.play().catch(() => {});
+        audio.onended = () => URL.revokeObjectURL(url);
+    } catch (_) {}
+}
+
+function float32ToPCM16(float32Array) {
+    const buffer = new ArrayBuffer(float32Array.length * 2);
+    const view = new DataView(buffer);
+    for (let i = 0; i < float32Array.length; i++) {
+        let sample = Math.max(-1, Math.min(1, float32Array[i]));
+        view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+    }
+    return buffer;
+}
+
+function detectSilence(floatData) {
+    let sum = 0;
+    for (let i = 0; i < floatData.length; i++) {
+        sum += floatData[i] * floatData[i];
+    }
+    const rms = Math.sqrt(sum / floatData.length);
+    return rms < AUDIO_THRESHOLD;
+}
+
+function handleSilenceDetection() {
+    if (!hasSpoken) return;
+    if (Date.now() - lastSoundTime >= SILENCE_DURATION) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ action: "end" }));
+            updateStatus("Processing answer...");
+        }
+        hasSpoken = false;
+    }
+}
+
+async function startRecording() {
+    if (isRecording) return;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        input = audioContext.createMediaStreamSource(stream);
+        processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+        processor.onaudioprocess = (event) => {
+            if (!isRecording) return;
+            const floatData = event.inputBuffer.getChannelData(0);
+            const isSilent = detectSilence(floatData);
+
+            if (!isSilent) {
+                lastSoundTime = Date.now();
+                hasSpoken = true;
+                if (silenceTimeout) {
+                    clearTimeout(silenceTimeout);
+                    silenceTimeout = null;
+                }
+            } else if (hasSpoken && !silenceTimeout) {
+                silenceTimeout = setTimeout(handleSilenceDetection, SILENCE_DURATION);
+            }
+
+            const pcm16 = float32ToPCM16(floatData);
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(pcm16);
+            }
+        };
+
+        input.connect(processor);
+        processor.connect(audioContext.destination);
+
+        isRecording = true;
+        hasSpoken = false;
+        lastSoundTime = Date.now();
+        recordBtn.classList.add("recording");
+        recordBtn.textContent = "🛑 Stop Speaking";
+        updateStatus("Listening... speak your answer.");
+    } catch (e) {
+        updateStatus("Microphone error: " + e.message);
+    }
+}
+
+function stopRecording() {
+    if (!isRecording) return;
+    isRecording = false;
+    if (silenceTimeout) {
+        clearTimeout(silenceTimeout);
+        silenceTimeout = null;
+    }
+    if (processor) processor.disconnect();
+    if (input) input.disconnect();
+    if (audioContext) audioContext.close();
+    if (stream) stream.getTracks().forEach(t => t.stop());
+
+    if (hasSpoken && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action: "end" }));
+    }
+
+    recordBtn.classList.remove("recording");
+    recordBtn.textContent = "🎤 Start Speaking";
+    updateStatus("Waiting for interviewer response...");
+}
+
+function connectWebSocket() {
+    const protocol = location.protocol === "https:" ? "wss" : "ws";
+    const host = location.host && location.host.trim() !== "" ? location.host : "127.0.0.1:8000";
+    const wsUrl = `${protocol}://${host}/ws/mock_interview_voice`;
+    updateStatus(`Connecting to ${wsUrl} ...`);
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        connectionStatus.textContent = "Connected";
+        connectionStatus.className = "connection-status connected";
+        updateStatus("Connected. Enter a target field and start interview.");
+    };
+
+    ws.onmessage = (event) => {
+        if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
+            playAudio(event.data);
+            return;
+        }
+
+        const data = JSON.parse(event.data);
+
+        if (data.type === "status") updateStatus(data.message);
+        if (data.type === "error") updateStatus("Error: " + data.message);
+
+        if (data.type === "interview_started") {
+            addMessage(`Interview started for: ${data.target_field}`, "bot");
+            addMessage(data.message, "bot");
+            updateStatus("Interview started. Click Start Speaking to answer.");
+        }
+
+        if (data.type === "transcription") {
+            addMessage(data.text, "user");
+        }
+
+        if (data.type === "response") {
+            addMessage(data.message, "bot");
+            updateStatus(`Round ${data.rounds_done}/${data.max_rounds}`);
+        }
+
+        if (data.type === "interview_complete") {
+            if (data.message) addMessage(data.message, "bot");
+            addScoreCard(data);
+            updateStatus("Interview completed.");
+            if (isRecording) stopRecording();
+        }
+    };
+
+    ws.onclose = () => {
+        connectionStatus.textContent = "Disconnected";
+        connectionStatus.className = "connection-status disconnected";
+        updateStatus("Socket disconnected.");
+    };
+
+    ws.onerror = () => {
+        updateStatus("WebSocket connection failed. Ensure backend is running on port 8000 and open this page via /mock_interview_test.");
+    };
+}
+
+startBtn.onclick = () => {
+    const targetField = (targetFieldInput.value || "General").trim();
+    const maxRounds = Number(maxRoundsSelect.value || 5);
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        updateStatus("WebSocket is not connected yet. Open http://127.0.0.1:8000/mock_interview_test or wait for connection.");
+        return;
+    }
+    ws.send(JSON.stringify({ action: "start_interview", target_field: targetField, max_rounds: maxRounds }));
+};
+
+recordBtn.onclick = () => {
+    if (!isRecording) startRecording();
+    else stopRecording();
+};
+
+finishBtn.onclick = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action: "finish_interview" }));
+        updateStatus("Finishing interview and generating score...");
+    }
+};
+
+clearBtn.onclick = () => {
+    if (isRecording) stopRecording();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action: "clear" }));
+    }
+    chatArea.innerHTML = "";
+    updateStatus("Session cleared.");
+};
+
+connectWebSocket();
+</script>
+</body>
+</html>

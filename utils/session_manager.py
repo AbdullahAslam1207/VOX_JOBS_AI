@@ -37,6 +37,7 @@ class SessionManager:
         session_id = str(uuid.uuid4())
         self.sessions[session_id] = {
             "chat_history": [],
+            "known_jobs": [],
             "created_at": datetime.now(),
             "last_activity": datetime.now()
         }
@@ -110,6 +111,33 @@ class SessionManager:
         if session_id in self.sessions:
             del self.sessions[session_id]
             logger.info(f"Cleared session: {session_id}")
+
+    def set_known_jobs(self, session_id: str, jobs: List[dict]):
+        """
+        Save latest known jobs for apply actions.
+
+        Args:
+            session_id: Session ID
+            jobs: List of job cards
+        """
+        session = self.get_session(session_id)
+        if session is not None:
+            session["known_jobs"] = jobs or []
+
+    def get_known_jobs(self, session_id: str) -> List[dict]:
+        """
+        Get latest known jobs for a session.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            list: Known jobs
+        """
+        session = self.get_session(session_id)
+        if session is not None:
+            return session.get("known_jobs", [])
+        return []
     
     def cleanup_expired_sessions(self):
         """Remove expired sessions"""
