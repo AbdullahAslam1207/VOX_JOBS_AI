@@ -54,17 +54,19 @@ def home():
 
 
 @application.post("/dummy_apply_jobs")
+@application.post("/apply/run")
 async def dummy_apply_jobs(request: Request, background_tasks: BackgroundTasks):
     """Dummy apply endpoint used by background apply-now flow."""
     data = await request.json()
-    job_cards = data.get("job_cards", [])
-    session_id = data.get("session_id", "")
+    email = data.get("email", "")
+    url = data.get("url", "")
 
-    background_tasks.add_task(process_dummy_apply, job_cards, session_id)
+    background_tasks.add_task(process_dummy_apply, email, url)
     return {
         "status": "accepted",
         "queued": True,
-        "applied_count": len(job_cards),
+        "email": email,
+        "url": url,
     }
 
 
@@ -174,6 +176,7 @@ async def voice_chat_websocket(websocket: WebSocket):
     
     # Audio buffer for accumulating PCM16 chunks
     audio_buffer = bytearray()
+    user_email = ""
     
     try:
         while True:
@@ -190,6 +193,12 @@ async def voice_chat_websocket(websocket: WebSocket):
             elif "text" in message:
                 data = json.loads(message["text"])
                 action = data.get("action")
+
+                # Allow client to send/update email after connect.
+                incoming_email = (data.get("email") or "").strip()
+                if incoming_email:
+                    user_email = incoming_email
+                    logger.info("Captured email for session %s", session_id)
                 
                 # Process accumulated PCM audio
                 if action == "end":
@@ -259,9 +268,14 @@ async def voice_chat_websocket(websocket: WebSocket):
                             apply_check = apply_resolution["check"]
 
                             if apply_check:
-                                bot_message = "Applying to the selected job now. Please wait while I submit your application."
-                                jobs = selected_jobs
-                                asyncio.create_task(trigger_dummy_apply_api(selected_jobs, session_id))
+                                if user_email:
+                                    bot_message = "Applying to the selected job now. Please wait while I submit your application."
+                                    jobs = selected_jobs
+                                    asyncio.create_task(trigger_dummy_apply_api(selected_jobs, session_id, user_email))
+                                else:
+                                    bot_message = "I can apply once you share your email on this connection."
+                                    jobs = []
+                                    apply_check = False
                             else:
                                 bot_message = "I cannot apply yet. Please say apply to first, second, or apply to all from the shown jobs."
                                 jobs = []
@@ -921,6 +935,7 @@ function connectWebSocket() {
         console.log("✅ WebSocket connected");
         connectionStatus.textContent = "Connected";
         connectionStatus.className = "connection-status connected";
+        ws.send(JSON.stringify({ email: "dummy.user@example.com" }));
         updateStatus("Connected. Click Start Speaking.");
     };
 

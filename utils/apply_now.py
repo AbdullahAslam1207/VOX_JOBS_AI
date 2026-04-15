@@ -1,13 +1,25 @@
 import os
 import re
 import logging
-from typing import List, Set
+from typing import List, Set, Optional
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-DUMMY_APPLY_API_URL = os.getenv("DUMMY_APPLY_API_URL", "http://127.0.0.1:8000/dummy_apply_jobs")
+DUMMY_APPLY_API_URL = os.getenv("DUMMY_APPLY_API_URL", "http://127.0.0.1:8000/apply/run")
+
+
+def _extract_job_url(job: dict) -> str:
+    """Extract canonical job URL from a job card."""
+    return (
+        job.get("url")
+        or job.get("job_url")
+        or job.get("job_link")
+        or job.get("apply_url")
+        or job.get("link")
+        or ""
+    ).strip()
 
 
 def _extract_apply_indices(query: str, total_jobs: int) -> Set[int]:
@@ -80,24 +92,37 @@ def resolve_apply_action(query: str, known_jobs: List[dict]) -> dict:
     }
 
 
-async def trigger_dummy_apply_api(job_cards: List[dict], session_id: str):
-    """Fire-and-forget apply call to dummy API."""
-    payload = {
-        "session_id": session_id,
-        "job_cards": job_cards,
-    }
+async def trigger_dummy_apply_api(job_cards: List[dict], session_id: str, email: str):
+    """Fire-and-forget apply calls to /apply/run with email + job url."""
+    if not email:
+        logger.warning("Apply API skipped for session %s: missing email", session_id)
+        return
+
+    payloads = []
+    seen_urls = set()
+    for card in job_cards:
+        url = _extract_job_url(card)
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            payloads.append({"email": email, "url": url})
+
+    if not payloads:
+        logger.warning("Apply API skipped for session %s: no valid job urls", session_id)
+        return
+
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.post(DUMMY_APPLY_API_URL, json=payload)
-            response.raise_for_status()
-        logger.info("Dummy apply API called successfully for %d jobs", len(job_cards))
+            for payload in payloads:
+                response = await client.post(DUMMY_APPLY_API_URL, json=payload)
+                response.raise_for_status()
+        logger.info("Apply API called successfully for session %s (%d jobs)", session_id, len(payloads))
     except Exception as error:
-        logger.error("Dummy apply API call failed: %s", str(error))
+        logger.error("Apply API call failed for session %s: %s", session_id, str(error))
 
 
-def process_dummy_apply(job_cards: List[dict], session_id: str):
-    """Simulate dummy apply processing in background."""
+def process_dummy_apply(email: Optional[str], url: Optional[str]):
+    """Simulate /apply/run background processing."""
     import time
 
-    time.sleep(2)
-    logger.info("Dummy apply completed for session %s, jobs count: %d", session_id, len(job_cards))
+    time.sleep(1)
+    logger.info("Dummy apply completed for email=%s, url=%s", email or "", url or "")
