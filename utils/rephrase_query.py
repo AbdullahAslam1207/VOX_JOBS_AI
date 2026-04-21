@@ -1,8 +1,8 @@
-from groq import Groq
+from openai import OpenAI
 import os
 
-# Initialize Groq client
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Initialize OpenAI client for rephrasing.
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def rephrase_question_jobs(prompt, query):
     """
@@ -10,7 +10,7 @@ def rephrase_question_jobs(prompt, query):
     Uses English language model understanding for job-related queries.
     """
     response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": query}
