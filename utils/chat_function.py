@@ -1,12 +1,12 @@
-from groq import Groq
+from openai import OpenAI
 from utils.jobs_prompts import digital_assistant_jobs_prompt
 from utils.normalize_history import build_chat_prompt
 import os
 import json
 import re
 
-# Initialize Groq client
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Initialize OpenAI client for text chat.
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def parse_response_with_cards(complete_response):
     """
@@ -105,9 +105,9 @@ def chat_jobs(chat_history, retriever, query):
         .replace("{question}", query)
     )
     
-    # Get complete response using Groq (no streaming)
+    # Get complete response using OpenAI (no streaming)
     response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="gpt-4.1-mini",
         messages=[
             {"role": "system", "content": conv_prompt},
             {"role": "user", "content": query}

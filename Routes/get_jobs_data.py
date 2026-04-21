@@ -2,7 +2,7 @@ import requests
 import json
 
 def fetch_and_save_jobs():
-    url = "https://5rtdm14j-8000.inc1.devtunnels.ms/CRUD/Get_jobs"
+    url = "https://21g0pfhj-8000.inc1.devtunnels.ms/CRUD/Get_jobs"
     
     try:
         response = requests.get(url)

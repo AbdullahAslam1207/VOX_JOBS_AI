@@ -7,7 +7,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-DUMMY_APPLY_API_URL = os.getenv("DUMMY_APPLY_API_URL", "http://127.0.0.1:8000/apply/run")
+DUMMY_APPLY_API_URL = "https://21g0pfhj-8000.inc1.devtunnels.ms/apply/run"
 
 
 def _extract_job_url(job: dict) -> str:

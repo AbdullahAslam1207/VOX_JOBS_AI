@@ -1,5 +1,5 @@
 import os
-from groq import Groq
+from openai import OpenAI
 
 from utils.mock_interview_prompts import (
     build_interview_system_prompt,
@@ -11,11 +11,11 @@ from utils.mock_interview_prompts import (
 
 
 class MockInterviewLLM:
-    def __init__(self, model: str = "llama-3.1-8b-instant"):
-        api_key = os.getenv("GROQ_API_KEY")
+    def __init__(self, model: str = "gpt-4.1-mini"):
+        api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("GROQ_API_KEY environment variable not set")
-        self.client = Groq(api_key=api_key)
+            raise ValueError("OPENAI_API_KEY environment variable not set")
+        self.client = OpenAI(api_key=api_key)
         self.model = model
 
     def _chat(self, messages):
@@ -29,13 +29,15 @@ class MockInterviewLLM:
 
     def opening_question(self, target_field: str) -> str:
         prompt = (
-            f"Start a mock interview for {target_field}. Ask only the first interview question in one sentence."
+            f"Start a mock interview for {target_field}."
         )
         content = self._chat(
             [
                 {
                     "role": "system",
-                    "content": "You are a professional interviewer. Ask one concise opening interview question.",
+                    "content": "You are a professional interviewer. Ask one concise opening interview question. "
+                    "Total questions in the interview must be exactly 3. "
+                    "Ask one question at a time and do not provide feedback until all 3 answers are completed.",
                 },
                 {"role": "user", "content": prompt},
             ]
@@ -43,6 +45,7 @@ class MockInterviewLLM:
         return (content or "Tell me about yourself and your experience relevant to this role.").strip()
 
     def next_turn(self, target_field: str, chat_history: list, rounds_done: int, max_rounds: int) -> dict:
+        effective_rounds = 3
         transcript_lines = []
         for turn in chat_history:
             user_msg = (turn.get("userMessage") or "").strip()
@@ -53,13 +56,13 @@ class MockInterviewLLM:
                 transcript_lines.append(f"Interviewer: {bot_msg}")
 
         transcript = "\n".join(transcript_lines)
-        system_prompt = build_interview_system_prompt(target_field, max_rounds)
-        user_prompt = build_turn_user_prompt(transcript, rounds_done, max_rounds)
+        system_prompt = build_interview_system_prompt(target_field, effective_rounds)
+        user_prompt = build_turn_user_prompt(transcript, rounds_done, effective_rounds)
 
         fallback = {
-            "feedback": "Thank you for your answer.",
+            "feedback": "",
             "next_question": "Can you share a specific project example that demonstrates your skills?",
-            "should_end": rounds_done >= max_rounds,
+            "should_end": rounds_done >= effective_rounds,
             "closing_message": "",
         }
 
@@ -76,9 +79,13 @@ class MockInterviewLLM:
         closing_message = str(parsed.get("closing_message", ""))
         should_end = bool(parsed.get("should_end", fallback["should_end"]))
 
-        if rounds_done >= max_rounds:
+        if rounds_done >= effective_rounds:
             should_end = True
             next_question = ""
+        else:
+            # Suppress interim feedback until all 3 answers are completed.
+            feedback = ""
+            closing_message = ""
 
         return {
             "feedback": feedback.strip(),

@@ -176,7 +176,12 @@ async def voice_chat_websocket(websocket: WebSocket):
     
     # Audio buffer for accumulating PCM16 chunks
     audio_buffer = bytearray()
-    user_email = ""
+    user_email = (
+        (websocket.query_params.get("User_Email") or "").strip()
+        or (websocket.query_params.get("user_email") or "").strip()
+    )
+    if user_email:
+        logger.info("Captured email from websocket query for session %s", session_id)
     
     try:
         while True:
@@ -195,7 +200,10 @@ async def voice_chat_websocket(websocket: WebSocket):
                 action = data.get("action")
 
                 # Allow client to send/update email after connect.
-                incoming_email = (data.get("email") or "").strip()
+                incoming_email = (
+                    (data.get("User_Email") or "").strip()
+                    or (data.get("email") or "").strip()
+                )
                 if incoming_email:
                     user_email = incoming_email
                     logger.info("Captured email for session %s", session_id)
@@ -490,7 +498,7 @@ async def mock_interview_voice_websocket(websocket: WebSocket):
 
                 if action == "start_interview":
                     target_field = (data.get("target_field") or "General").strip()
-                    max_rounds = int(data.get("max_rounds", 5) or 5)
+                    max_rounds = 3
 
                     mock_interview_session_manager.start_interview(session_id, target_field, max_rounds)
                     llm = get_mock_interview_llm()

@@ -1,8 +1,9 @@
 # .gitignore for Python projects
 __pycache__/
 *.pyc
-.env
 .venv/
 Scraped_Data/
 Rozee-Scraper-js/node_modules/
 vector_store/
+config.bat
+node_modules
